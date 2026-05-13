@@ -1,100 +1,97 @@
-# Weather Bench Gcp
+# WeatherBench GCP
 
-A template for research projects that publish a [MyST](https://mystmd.org/) Jupyter Book
-to GitHub Pages. The data pipeline is managed by [Snakemake](https://snakemake.readthedocs.io/);
-dependencies are managed by [uv](https://docs.astral.sh/uv/).
+Evaluate numerical weather prediction models against ERA5 reanalysis using the
+[WeatherBench 2](https://sites.research.google/weatherbench/) metrics and the
+public Google Cloud Storage datasets. The pipeline downloads regional subsets,
+computes deterministic skill scores (RMSE, ACC), and publishes results as a
+[MyST](https://mystmd.org/) Jupyter Book.
 
-## Starting a new project from this template
-
-### Pick your names up front
-
-You need two names:
-
-| What | Example | Rule |
-|------|---------|------|
-| **Repository / folder name** | `financial-market-returns` | Chosen on GitHub when you create the repo — becomes the local folder name after cloning |
-| **Python package abbreviation** | `fmr` | Short acronym you pick yourself; used in every `import` statement |
-
-The abbreviation is the equivalent of `woe` in `world-of-energy`. It must be a
-valid Python identifier (letters, digits, underscores) — shorter is better.
-
-### 1. Create the repository on GitHub
-
-Click **Use this template → Create a new repository** at the top of this page.
-Name it (e.g. `financial-market-returns`) and click **Create repository**.
-
-### 2. Clone and initialize
+## Quick start
 
 ```bash
-git clone https://github.com/your-username/financial-market-returns.git
-cd financial-market-returns
-python init_project.py
-```
-
-The script reads the project name from the git remote automatically and asks
-only for the package abbreviation. It renames `pkg/`, updates all references
-in `pyproject.toml`, `Snakefile`, and the pipeline scripts, commits the
-result, and removes itself.
-
-### 3. Set up the environment
-
-```bash
-# Install uv if you haven't already — https://docs.astral.sh/uv/
+# Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 uv sync
+snakemake -n           # dry-run — see what would execute
+snakemake -j4          # run full pipeline (parallelises extraction steps)
 ```
 
-### 4. Verify the example pipeline
+## Configuration
 
-```bash
-make dry-run   # preview what would run
-make run       # execute the example pipeline
-make serve     # open http://localhost:3000 — live book preview
+All experiment parameters live in `configs/bavaria_dev.yaml`:
+
+| Field | Purpose |
+|-------|---------|
+| `experiment.id` | Unique run ID used to name result files |
+| `region` | Lat/lon bounding box for the spatial subset |
+| `period.start/end` | Forecast init-time range |
+| `period.max_lead_hours` | Maximum forecast lead time (drives the obs coverage buffer) |
+| `model.name` | Forecast model key (must match a key under `sources`) |
+| `variables` | Surface and pressure-level variables to extract and evaluate |
+| `sources` | GCS paths for ERA5, climatology, and each model's zarr store |
+
+Changing any of these fields produces new artifact IDs; Snakemake will
+re-run only the affected rules automatically.
+
+## Pipeline
+
+```
+extract_observations ─┐
+extract_climatology  ──┼─▶ evaluate ─▶ analyse_results
+extract_forecast     ─┘
 ```
 
-Once everything works, remove the example files and start your own pipeline:
+| Rule | Script | Output |
+|------|--------|--------|
+| `extract_observations` | `pipeline/01_extract_observations.py` | `data/downloads/observations/<id>/` |
+| `extract_climatology` | `pipeline/02_extract_climatology.py` | `data/downloads/climatology/<region>/` |
+| `extract_forecast` | `pipeline/03_extract_forecast.py` | `data/downloads/forecasts/<id>/` |
+| `evaluate` | `pipeline/04_evaluate.py` | `data/processed/evaluations/<id>/deterministic.nc` |
+| `analyse_results` | `pipeline/05_analyse_results.py` | `book/notebooks/05_analyse_results.ipynb`, `output/images/` |
 
-```bash
-rm pipeline/01_download_example.py pipeline/02_analyse_example.py
-# Remove the example rule from Snakefile and the notebook entry from book/myst.yml
-```
+Data artifacts are Zarr stores on disk. Snakemake tracks `metadata.json`
+files as output stamps — delete one to force re-extraction of that artifact.
 
-### 5. Enable GitHub Pages
+Observations are extracted for `period.start` → `period.end + 1 day + max_lead_hours`
+so that every forecast valid time (init + lead) has a matching truth entry.
 
-In your repository: **Settings → Pages → Source → GitHub Actions**.
+## Data sources
 
-Every push to `main` will build and deploy the book automatically.
-Pull requests run only the build check.
+All data is read anonymously from the
+[WeatherBench 2 public GCS bucket](https://console.cloud.google.com/storage/browser/weatherbench2).
+
+| Dataset | GCS path |
+|---------|----------|
+| ERA5 (6-hourly) | `gs://weatherbench2/datasets/era5/1959-2022-6h-240x121_equiangular_with_poles_conservative.zarr` |
+| ERA5 climatology | `gs://weatherbench2/datasets/era5-hourly-climatology/1990-2019_6h_240x121_equiangular_with_poles_conservative.zarr` |
+| Pangu-Weather | `gs://weatherbench2/datasets/pangu/2018-2022_0012_240x121_equiangular_with_poles_conservative.zarr` |
 
 ## Project layout
 
 ```
-project-root/
-├── <abbrev>/            # Python package — renamed by init_project.py
-│   └── paths.py         # Centralized path config
-├── pipeline/            # Pipeline scripts
-│   ├── 01_download_*    # Data acquisition
-│   └── 02_analyse_*     # Analysis → notebook
-├── book/                # MyST book source
-│   ├── notebooks/       # Executed notebooks (Snakemake output)
-│   ├── markdown/        # Static content
-│   └── myst.yml         # TOC and site settings
-├── data/                # Git-ignored data
-├── output/images/       # Figures (tracked in git)
-├── Snakefile            # Pipeline DAG
-└── contribution_conventions.md   # Detailed conventions for contributors/AI
+weather-bench-gcp/
+├── wbgcp/                   # Python package
+│   ├── config.py            # ExperimentConfig dataclass
+│   ├── metadata.py          # Artifact provenance helpers
+│   └── paths.py             # Centralized path resolution
+├── pipeline/                # Pipeline scripts (numbered by stage)
+├── configs/                 # Experiment YAML configs
+│   └── bavaria_dev.yaml     # Bavaria / Q1-2020 / Pangu dev run
+├── book/                    # MyST book source
+│   ├── notebooks/           # Executed notebooks (Snakemake output)
+│   └── myst.yml             # TOC and site settings
+├── data/                    # Git-ignored data (managed by Snakemake)
+├── output/images/           # Figures (tracked in git)
+└── Snakefile                # Pipeline DAG
 ```
-
-See [contribution_conventions.md](contribution_conventions.md) for full details on
-adding pipeline stages, writing analysis scripts, and Snakemake usage.
 
 ## Common Snakemake commands
 
 | Command | Effect |
 |---------|--------|
 | `snakemake -n` | Dry run — show what would execute |
-| `snakemake -j4` | Run pipeline (4 parallel jobs) |
-| `snakemake -R <rule>` | Force-re-run a specific rule |
-| `snakemake <file>` | Build one specific output file |
+| `snakemake -j4` | Run pipeline with 4 parallel jobs |
+| `snakemake -R extract_observations` | Force-re-run one rule |
 | `snakemake --forceall` | Re-run everything unconditionally |
+| `snakemake <file>` | Build one specific output file |

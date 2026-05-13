@@ -1,23 +1,16 @@
 """Project paths configuration.
 
 All paths are resolved relative to the project root, making scripts runnable
-from any working directory. Add a @property for each new data file introduced
-in the pipeline.
+from any working directory.
 """
 
 from pathlib import Path
 
 
 class ProjPaths:
-    """Centralized project paths.
-
-    The root is inferred from the location of this file (pkg/), so scripts
-    run correctly regardless of the working directory they are invoked from.
-    """
-
     def __init__(self):
-        self._pkg_path = Path(__file__).resolve().parent  # pkg/
-        self._project_path = self._pkg_path.parent        # project root
+        self._pkg_path = Path(__file__).resolve().parent
+        self._project_path = self._pkg_path.parent
 
     # ------------------------------------------------------------------ #
     # Top-level directories                                                #
@@ -25,17 +18,14 @@ class ProjPaths:
 
     @property
     def project_path(self) -> Path:
-        """Root project directory."""
         return self._project_path
 
     @property
     def pkg_path(self) -> Path:
-        """Source package directory (pkg/)."""
         return self._pkg_path
 
     @property
     def pipeline_path(self) -> Path:
-        """Pipeline scripts directory."""
         return self._project_path / "pipeline"
 
     # ------------------------------------------------------------------ #
@@ -44,17 +34,14 @@ class ProjPaths:
 
     @property
     def data_path(self) -> Path:
-        """Main data directory."""
         return self._project_path / "data"
 
     @property
     def downloads_path(self) -> Path:
-        """Raw downloaded data."""
         return self.data_path / "downloads"
 
     @property
     def processed_data_path(self) -> Path:
-        """Processed/transformed data."""
         return self.data_path / "processed"
 
     # ------------------------------------------------------------------ #
@@ -63,32 +50,48 @@ class ProjPaths:
 
     @property
     def output_path(self) -> Path:
-        """Generated outputs root."""
         return self._project_path / "output"
 
     @property
     def images_path(self) -> Path:
-        """Chart/figure images saved by pipeline scripts."""
         return self.output_path / "images"
 
     @property
     def reports_path(self) -> Path:
-        """Report files."""
         return self.output_path / "reports"
 
     # ------------------------------------------------------------------ #
-    # Example data files — replace with project-specific paths            #
+    # Data artifact paths                                                  #
+    #                                                                      #
+    # Artifacts are keyed by (type, artifact_id).                         #
+    # artifact_id is derived from ExperimentConfig properties:            #
+    #   obs/forecast: {region}_{period_start}_{period_end}                #
+    #   climatology:  {region}                                             #
     # ------------------------------------------------------------------ #
 
-    @property
-    def example_raw_file(self) -> Path:
-        """Raw example dataset (parquet)."""
-        return self.downloads_path / "example_data.parquet"
+    def artifact_path(self, artifact_type: str, artifact_id: str) -> Path:
+        """Root directory for a data artifact."""
+        return self.downloads_path / artifact_type / artifact_id
 
-    @property
-    def example_processed_file(self) -> Path:
-        """Processed example dataset (parquet)."""
-        return self.processed_data_path / "example_processed.parquet"
+    def artifact_zarr(self, artifact_type: str, artifact_id: str) -> Path:
+        """Zarr store path inside an artifact directory."""
+        return self.artifact_path(artifact_type, artifact_id) / "data.zarr"
+
+    def artifact_metadata(self, artifact_type: str, artifact_id: str) -> Path:
+        """Provenance metadata file for an artifact (tracked by Snakemake)."""
+        return self.artifact_path(artifact_type, artifact_id) / "metadata.json"
+
+    # ------------------------------------------------------------------ #
+    # Evaluation output paths                                              #
+    # ------------------------------------------------------------------ #
+
+    def evaluation_path(self, experiment_id: str) -> Path:
+        """Root directory for evaluation outputs."""
+        return self.processed_data_path / "evaluations" / experiment_id
+
+    def evaluation_nc(self, experiment_id: str, eval_name: str = "deterministic") -> Path:
+        """Results NetCDF produced by evaluate_in_memory."""
+        return self.evaluation_path(experiment_id) / f"{eval_name}.nc"
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
@@ -96,11 +99,6 @@ class ProjPaths:
 
     def ensure_directories(self) -> None:
         """Create all standard directories if they do not yet exist."""
-        dirs = [
-            self.downloads_path,
-            self.processed_data_path,
-            self.images_path,
-            self.reports_path,
-        ]
-        for d in dirs:
+        for d in [self.downloads_path, self.processed_data_path,
+                  self.images_path, self.reports_path]:
             d.mkdir(parents=True, exist_ok=True)

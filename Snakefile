@@ -1,29 +1,40 @@
-# Snakefile — project pipeline
+# Snakefile — WeatherBench 2 evaluation pipeline
 #
-# Concepts used here:
-#
-#   ancient(path)   — if the file already exists, treat it as infinitely old so
-#                     this rule is skipped. Ideal for downloaded data that
-#                     should not be re-fetched every run.
-#
-#   rule all        — pseudo-rule whose `input` lists the final targets.
-#                     `snakemake` (no arguments) builds everything in this list.
+# The config file drives all paths; changing it (region, period, model)
+# produces new artifact IDs and Snakemake will re-run the affected rules.
 #
 # Common commands:
-#   snakemake -n              dry-run: show what would be executed
-#   snakemake -j4             run with 4 parallel jobs
-#   snakemake <target>        build one specific output file
-#   snakemake --forcerun <rule>   force a rule to re-run even if outputs exist
+#   snakemake -n              dry-run
+#   snakemake -j4             run pipeline
+#   snakemake -R extract_observations   force-re-run one rule
+#   snakemake --forceall      re-run everything
+
+import yaml
 
 # ---------------------------------------------------------------------------
-# Project-wide settings
+# Load experiment config to derive output paths
 # ---------------------------------------------------------------------------
 
-# List every notebook that the book should contain.
-# Extend this list when you add a new analysis script.
-ANALYSIS_NOTEBOOKS = [
-    "book/notebooks/02_analyse_example.ipynb",
-]
+CONFIG = "configs/bavaria_dev.yaml"
+
+with open(CONFIG) as _f:
+    _cfg = yaml.safe_load(_f)
+
+_EXPERIMENT_ID = _cfg["experiment"]["id"]
+_REGION        = _cfg["region"]["name"]
+_PERIOD_ID     = f"{_cfg['period']['start']}_{_cfg['period']['end']}"
+_MODEL         = _cfg["model"]["name"]
+
+# Artifact root paths (data lives alongside these metadata.json files)
+_OBS_META      = f"data/downloads/observations/{_REGION}_{_PERIOD_ID}/metadata.json"
+_CLIM_META     = f"data/downloads/climatology/{_REGION}/metadata.json"
+_FC_META       = f"data/downloads/forecasts/{_MODEL}_{_REGION}_{_PERIOD_ID}/metadata.json"
+
+# Final outputs
+_METRICS       = f"data/processed/evaluations/{_EXPERIMENT_ID}/deterministic.nc"
+_NOTEBOOK      = f"book/notebooks/05_analyse_results.ipynb"
+
+ANALYSIS_NOTEBOOKS = [_NOTEBOOK]
 
 # ---------------------------------------------------------------------------
 # Default target
@@ -34,36 +45,64 @@ rule all:
         ANALYSIS_NOTEBOOKS
 
 # ---------------------------------------------------------------------------
-# Download rules
-# ---------------------------------------------------------------------------
-# Use ancient() on outputs so that existing downloaded files are never
-# re-fetched.  Delete the file manually to force a fresh download.
-
-rule download_example:
-    output:
-        ancient("data/downloads/example_data.parquet"),
-    shell:
-        "uv run python pipeline/01_download_example.py"
-
-# ---------------------------------------------------------------------------
-# Analysis / notebook rules
-# ---------------------------------------------------------------------------
-# Pattern for every analysis script:
-#   1. jupytext executes the .py script and writes an .ipynb with outputs
-#   2. A Python one-liner strips the raw jupytext metadata cell that MyST
-#      does not understand
+# Data extraction rules
 #
-# Add one rule per analysis script and list all image outputs explicitly so
-# Snakemake can track them as dependencies of downstream rules.
+# Snakemake tracks the metadata.json as the output stamp; the data.zarr
+# directory is written alongside it by each script.
+# Delete a metadata.json to force re-extraction of that artifact.
+# ---------------------------------------------------------------------------
 
-rule process_example:
+rule extract_observations:
     input:
-        script  = "pipeline/02_analyse_example.py",
-        data    = "data/downloads/example_data.parquet",
+        config = CONFIG,
     output:
-        notebook = "book/notebooks/02_analyse_example.ipynb",
-        img1     = "output/images/02_daily_average.png",
-        img2     = "output/images/02_category_dist.png",
+        _OBS_META,
+    shell:
+        "uv run python pipeline/01_extract_observations.py {input.config}"
+
+rule extract_climatology:
+    input:
+        config = CONFIG,
+    output:
+        _CLIM_META,
+    shell:
+        "uv run python pipeline/02_extract_climatology.py {input.config}"
+
+rule extract_forecast:
+    input:
+        config = CONFIG,
+    output:
+        _FC_META,
+    shell:
+        "uv run python pipeline/03_extract_forecast.py {input.config}"
+
+# ---------------------------------------------------------------------------
+# Evaluation rule
+# ---------------------------------------------------------------------------
+
+rule evaluate:
+    input:
+        config   = CONFIG,
+        obs      = _OBS_META,
+        clim     = _CLIM_META,
+        forecast = _FC_META,
+    output:
+        _METRICS,
+    shell:
+        "uv run python pipeline/04_evaluate.py {input.config}"
+
+# ---------------------------------------------------------------------------
+# Analysis notebook rule
+# ---------------------------------------------------------------------------
+
+rule analyse_results:
+    input:
+        script  = "pipeline/05_analyse_results.py",
+        metrics = _METRICS,
+    output:
+        notebook = _NOTEBOOK,
+        img_rmse = "output/images/05_rmse_lead_time.png",
+        img_acc  = "output/images/05_acc_lead_time.png",
     shell:
         """
         MPLBACKEND=Agg uv run jupytext --to notebook --execute \
@@ -77,10 +116,3 @@ nb.cells = [c for c in nb.cells
 nbformat.write(nb, '{output.notebook}')
 "
         """
-
-# ---------------------------------------------------------------------------
-# Utility rules
-# ---------------------------------------------------------------------------
-
-# Re-run a single stage by name:  snakemake -R download_example
-# Force all:                       snakemake --forceall

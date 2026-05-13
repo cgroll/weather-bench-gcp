@@ -1,0 +1,38 @@
+experiment:
+  id: bavaria_dev_v1
+  description: "Bavaria region Q1-2020 development evaluation — Pangu vs ERA5"
+
+region:
+  name: bavaria
+  lat_min: 47.25
+  lat_max: 50.75
+  lon_min: 9.0
+  lon_max: 13.5
+
+period:
+  start: "2020-01-01"
+  end: "2020-03-31"
+  max_lead_hours: 240  # max forecast lead; obs are extracted up to end + this buffer
+
+model:
+  name: pangu
+
+# Variables stored in data artifacts (superset — evaluate any subset later)
+variables:
+  surface:
+    - "2m_temperature"
+  pressure_level:
+    - name: "geopotential"
+      levels: [500]
+
+# Metrics to compute in this evaluation run
+metrics:
+  - rmse
+  - acc
+
+# WeatherBench 2 public GCS source paths.
+# Verify available datasets with: gsutil ls gs://weatherbench2/datasets/
+sources:
+  era5: "gs://weatherbench2/datasets/era5/1959-2022-6h-240x121_equiangular_with_poles_conservative.zarr"
+  climatology: "gs://weatherbench2/datasets/era5-hourly-climatology/1990-2019_6h_240x121_equiangular_with_poles_conservative.zarr"
+  pangu: "gs://weatherbench2/datasets/pangu/2018-2022_0012_240x121_equiangular_with_poles_conservative.zarr"

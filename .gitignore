@@ -1,4 +1,5 @@
 _build/
+.snakemake/
 
 # Python
 __pycache__/
