@@ -9,10 +9,10 @@
 # ---
 
 # %% [markdown]
-# # WeatherBench 2 Evaluation — Bavaria Dev
+# # WeatherBench 2 Evaluation — Europe 2022
 #
-# RMSE and ACC vs. lead time for Pangu-Weather forecasts evaluated
-# against ERA5 over Bavaria (Q1 2020, 1.5° grid).
+# RMSE vs. lead time for Pangu-Weather forecasts evaluated
+# against ERA5 over Europe (full year 2022, 240x121 grid).
 #
 # Metrics were produced by `weatherbench2.evaluation.evaluate_in_memory`.
 # RMSE is derived here as sqrt(MSE).
@@ -26,7 +26,7 @@ from wbgcp.config import ExperimentConfig
 
 paths = ProjPaths()
 paths.ensure_directories()
-cfg = ExperimentConfig.from_yaml(paths.project_path / "configs/bavaria_dev.yaml")
+cfg = ExperimentConfig.from_yaml(paths.project_path / "configs/europe_2022_v1.yaml")
 
 results = xr.open_dataset(paths.evaluation_nc(cfg.id))
 print(results)
@@ -39,7 +39,6 @@ print(results)
 # %%
 region = cfg.region.name
 mse = results.sel(metric="mse", region=region)
-acc = results.sel(metric="acc", region=region)
 rmse = mse ** 0.5
 
 # Convert lead_time to hours for plotting
@@ -70,7 +69,7 @@ for ax, var in zip(axes[0], all_vars):
     ax.set_ylabel("RMSE")
     ax.grid(True, alpha=0.3)
 
-fig.suptitle(f"{cfg.model_name.title()} — {region.title()} Q1 2020")
+fig.suptitle(f"{cfg.model_name.title()} — {region.title()} 2022")
 fig.tight_layout()
 fig.savefig(paths.images_path / "05_rmse_lead_time.png", dpi=150, bbox_inches="tight")
 plt.show()
@@ -79,36 +78,4 @@ plt.show()
 # ```{figure} ../../output/images/05_rmse_lead_time.png
 # :name: fig-05-rmse
 # RMSE vs. lead time for each evaluated variable. Lower is better.
-# ```
-
-# %% [markdown]
-# ## ACC vs Lead Time
-
-# %%
-fig, axes = plt.subplots(1, len(all_vars), figsize=(7 * len(all_vars), 4), squeeze=False)
-
-for ax, var in zip(axes[0], all_vars):
-    if var in pl_vars:
-        for lv in pl_levels[var]:
-            ax.plot(lead_hours, acc[var].sel(level=lv), marker="o", markersize=3,
-                    label=f"{lv} hPa")
-        ax.legend(fontsize=8)
-    else:
-        ax.plot(lead_hours, acc[var], marker="o", markersize=3, color="C1")
-    ax.axhline(0.6, color="gray", linestyle="--", linewidth=0.8, label="ACC = 0.6")
-    ax.set_ylim(-0.1, 1.05)
-    ax.set_title(var.replace("_", " "))
-    ax.set_xlabel("Lead time (hours)")
-    ax.set_ylabel("ACC")
-    ax.grid(True, alpha=0.3)
-
-fig.suptitle(f"{cfg.model_name.title()} — {region.title()} Q1 2020")
-fig.tight_layout()
-fig.savefig(paths.images_path / "05_acc_lead_time.png", dpi=150, bbox_inches="tight")
-plt.show()
-
-# %% [markdown]
-# ```{figure} ../../output/images/05_acc_lead_time.png
-# :name: fig-05-acc
-# ACC vs. lead time. The dashed line marks the ACC = 0.6 skill threshold.
 # ```

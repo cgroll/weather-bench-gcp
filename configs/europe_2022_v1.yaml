@@ -1,0 +1,36 @@
+experiment:
+  id: europe_2022_v1
+  description: "Europe region full-year 2022 evaluation — Pangu vs ERA5, Z500 RMSE"
+
+region:
+  name: europe
+  lat_min: 35.0
+  lat_max: 75.0
+  lon_min: -12.5
+  lon_max: 42.5
+
+period:
+  start: "2022-01-01"
+  end: "2022-12-31"
+  max_lead_hours: 240  # max forecast lead; obs are extracted up to end + this buffer
+
+model:
+  name: pangu
+
+# Variables stored in data artifacts (superset — evaluate any subset later)
+variables:
+  surface: []
+  pressure_level:
+    - name: "geopotential"
+      levels: [500]
+
+# Metrics to compute in this evaluation run
+metrics:
+  - rmse
+
+# WeatherBench 2 public GCS source paths.
+# Verify available datasets with: gsutil ls gs://weatherbench2/datasets/
+sources:
+  era5: "gs://weatherbench2/datasets/era5/1959-2023_01_10-6h-240x121_equiangular_with_poles_conservative.zarr"
+  climatology: "gs://weatherbench2/datasets/era5-hourly-climatology/1990-2019_6h_240x121_equiangular_with_poles_conservative.zarr"
+  pangu: "gs://weatherbench2/datasets/pangu/2018-2022_0012_240x121_equiangular_with_poles_conservative.zarr"

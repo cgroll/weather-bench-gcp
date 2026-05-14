@@ -43,6 +43,11 @@ print(f"\nFull forecast structure:\n{ds_full}\n")
 # WB2 forecast datasets use 'time' for init time and 'prediction_timedelta'
 # (integer hours) for lead time.
 r = cfg.region
+# Normalize longitude to -180..180 if source uses 0..360 convention.
+if ds_full.longitude.values.max() > 180:
+    ds_full = ds_full.assign_coords(
+        longitude=((ds_full.longitude + 180) % 360 - 180)
+    ).sortby("longitude")
 ds = ds_full.sortby("latitude").sel(
     latitude=slice(r.lat_min, r.lat_max),
     longitude=slice(r.lon_min, r.lon_max),

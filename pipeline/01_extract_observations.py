@@ -45,6 +45,11 @@ obs_end = (
     + pd.Timedelta(days=1)           # cover inits at any hour of the last day
     + pd.Timedelta(hours=cfg.period.max_lead_hours)
 ).isoformat()
+# Normalize longitude to -180..180 if source uses 0..360 convention.
+if ds_full.longitude.values.max() > 180:
+    ds_full = ds_full.assign_coords(
+        longitude=((ds_full.longitude + 180) % 360 - 180)
+    ).sortby("longitude")
 ds = ds_full.sortby("latitude").sel(
     latitude=slice(r.lat_min, r.lat_max),
     longitude=slice(r.lon_min, r.lon_max),
