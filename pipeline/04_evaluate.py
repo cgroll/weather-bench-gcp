@@ -8,9 +8,11 @@ Usage:
     uv run python pipeline/04_evaluate.py configs/bavaria_dev.yaml
 """
 
+import dataclasses
 import sys
 from pathlib import Path
 
+import numpy as np
 import xarray as xr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -18,7 +20,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from weatherbench2 import config as wb2config
 from weatherbench2.evaluation import evaluate_in_memory
 from weatherbench2.metrics import ACC, MSE
-from weatherbench2.regions import SliceRegion
+from weatherbench2.regions import Region, SliceRegion
+
+
+@dataclasses.dataclass
+class UniformGridRegion(Region):
+    """SliceRegion with correct area weights for a uniform latitude grid.
+
+    WB2's get_lat_weights extends cell bounds to ±90° regardless of the
+    input array, which gives wrong weights when data is pre-extracted to a
+    spatial subregion.  This class recomputes bounds from the actual grid
+    step so results match WB2's full-grid evaluation exactly for all
+    non-polar interior points.
+    """
+
+    lat_slice: slice = dataclasses.field(default_factory=lambda: slice(None))
+    lon_slice: slice = dataclasses.field(default_factory=lambda: slice(None))
+    grid_step_deg: float = 1.5  # source grid spacing in degrees
+
+    def apply(self, dataset, weights):
+        ds = dataset.sel(latitude=self.lat_slice, longitude=self.lon_slice)
+        lat_rad = np.deg2rad(ds.latitude.values)
+        half = np.deg2rad(self.grid_step_deg / 2)
+        areas = np.sin(lat_rad + half) - np.sin(lat_rad - half)
+        w = xr.DataArray(
+            areas / areas.mean(),
+            dims=["latitude"],
+            coords={"latitude": ds.latitude},
+        )
+        return ds, w
 
 from wbgcp.config import ExperimentConfig
 from wbgcp.paths import ProjPaths
@@ -59,7 +89,7 @@ eval_configs = {
             "acc": ACC(climatology=climatology),
         },
         regions={
-            cfg.region.name: SliceRegion(
+            cfg.region.name: UniformGridRegion(
                 lat_slice=slice(r.lat_min, r.lat_max),
                 lon_slice=slice(r.lon_min, r.lon_max),
             ),

@@ -19,7 +19,8 @@ model:
 
 # Variables stored in data artifacts (superset — evaluate any subset later)
 variables:
-  surface: []
+  surface:
+    - "2m_temperature"
   pressure_level:
     - name: "geopotential"
       levels: [500]
@@ -27,6 +28,7 @@ variables:
 # Metrics to compute in this evaluation run
 metrics:
   - rmse
+  - acc
 
 # WeatherBench 2 public GCS source paths.
 # Verify available datasets with: gsutil ls gs://weatherbench2/datasets/

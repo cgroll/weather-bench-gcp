@@ -102,6 +102,7 @@ rule analyse_results:
     output:
         notebook = _NOTEBOOK,
         img_rmse = "output/images/05_rmse_lead_time.png",
+        img_acc  = "output/images/05_acc_lead_time.png",
     shell:
         """
         MPLBACKEND=Agg uv run jupytext --to notebook --execute \
